@@ -1,0 +1,823 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>GST Reconciliation Tracker</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+  :root{
+    --bg:#f6f7f9; --card:#ffffff; --border:#e2e5ea; --text:#1a1d24; --muted:#6b7280;
+    --primary:#2563eb; --primary-ink:#ffffff;
+    --green:#0f9d58; --green-bg:#e6f6ec;
+    --amber:#b45309; --amber-bg:#fef3e0;
+    --red:#c0362c; --red-bg:#fdeceb;
+    --gray:#6b7280; --gray-bg:#eef0f3;
+    --blue:#2563eb; --blue-bg:#eaf1fe;
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);font-size:14px;line-height:1.5}
+  header{background:var(--card);border-bottom:1px solid var(--border);padding:14px 22px;display:flex;align-items:center;gap:14px;position:sticky;top:0;z-index:20}
+  header h1{font-size:16px;margin:0;font-weight:700}
+  header .sub{color:var(--muted);font-size:12px}
+  header .spacer{flex:1}
+  .save-indicator{font-size:12px;color:var(--muted);display:flex;align-items:center;gap:6px}
+  .save-dot{width:7px;height:7px;border-radius:50%;background:var(--green);transition:background .2s}
+  .save-dot.saving{background:var(--amber)}
+  nav{display:flex;gap:2px;background:var(--card);border-bottom:1px solid var(--border);padding:0 18px;overflow-x:auto}
+  nav button{background:none;border:none;padding:12px 16px;font-size:13px;font-weight:600;color:var(--muted);cursor:pointer;border-bottom:2px solid transparent;white-space:nowrap}
+  nav button:hover{color:var(--text)}
+  nav button.active{color:var(--primary);border-bottom-color:var(--primary)}
+  main{max-width:1180px;margin:0 auto;padding:22px}
+  .grid{display:grid;gap:14px}
+  .cols-2{grid-template-columns:1fr 1fr}
+  .cols-3{grid-template-columns:repeat(3,1fr)}
+  .cols-4{grid-template-columns:repeat(4,1fr)}
+  @media (max-width: 820px){.cols-2,.cols-3,.cols-4{grid-template-columns:1fr}}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:16px}
+  .card h2{font-size:14px;margin:0 0 4px}
+  .card .hint{color:var(--muted);font-size:12px;margin:0 0 12px}
+  .stat{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:14px}
+  .stat .label{color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.03em}
+  .stat .value{font-size:22px;font-weight:700;margin-top:4px;font-variant-numeric:tabular-nums}
+  .stat .value.green{color:var(--green)} .stat .value.amber{color:var(--amber)} .stat .value.red{color:var(--red)}
+  label{display:block;font-size:12px;font-weight:600;color:var(--text);margin-bottom:4px}
+  input[type=text],input[type=date],input[type=number],select,textarea{
+    width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:7px;font-size:13px;background:#fff;color:var(--text);font-family:inherit
+  }
+  textarea{resize:vertical}
+  .field{margin-bottom:12px}
+  .row{display:flex;gap:10px;align-items:flex-end}
+  .row > *{flex:1}
+  button.btn{background:var(--primary);color:var(--primary-ink);border:none;border-radius:7px;padding:9px 14px;font-size:13px;font-weight:600;cursor:pointer}
+  button.btn:hover{opacity:.92}
+  button.btn.secondary{background:var(--gray-bg);color:var(--text)}
+  button.btn.outline{background:#fff;border:1px solid var(--border);color:var(--text)}
+  button.btn.danger{background:var(--red-bg);color:var(--red)}
+  button.btn:disabled{opacity:.5;cursor:not-allowed}
+  button.icon-btn{background:none;border:none;cursor:pointer;color:var(--muted);font-size:14px;padding:4px 6px;border-radius:5px}
+  button.icon-btn:hover{background:var(--gray-bg);color:var(--text)}
+  table{width:100%;border-collapse:collapse;font-size:12.5px}
+  th{text-align:left;color:var(--muted);font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.02em;padding:8px 10px;border-bottom:1px solid var(--border);white-space:nowrap}
+  td{padding:8px 10px;border-bottom:1px solid var(--border);vertical-align:top}
+  tr.clickable{cursor:pointer}
+  tr.clickable:hover{background:#f8fafc}
+  .num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+  .badge{display:inline-block;padding:2px 9px;border-radius:99px;font-size:11px;font-weight:600;white-space:nowrap}
+  .badge.matched{background:var(--green-bg);color:var(--green)}
+  .badge.fuzzy{background:var(--blue-bg);color:var(--blue)}
+  .badge.variance{background:var(--amber-bg);color:var(--amber)}
+  .badge.missing2b{background:var(--red-bg);color:var(--red)}
+  .badge.missingbooks{background:var(--amber-bg);color:var(--amber)}
+  .badge.duplicate{background:var(--gray-bg);color:var(--gray)}
+  .badge.accepted{background:var(--green-bg);color:var(--green)}
+  .badge.flagged{background:var(--red-bg);color:var(--red)}
+  .badge.followup{background:var(--amber-bg);color:var(--amber)}
+  .badge.pending{background:var(--gray-bg);color:var(--gray)}
+  .toolbar{display:flex;gap:8px;align-items:center;margin-bottom:12px;flex-wrap:wrap}
+  .toolbar input,.toolbar select{width:auto}
+  .toolbar .grow{flex:1;min-width:160px}
+  .empty{color:var(--muted);text-align:center;padding:40px 20px;font-size:13px}
+  .drop{border:2px dashed var(--border);border-radius:10px;padding:26px;text-align:center;cursor:pointer;color:var(--muted)}
+  .drop.drag{border-color:var(--primary);background:var(--blue-bg)}
+  .drop input{display:none}
+  .pill-tabs{display:flex;gap:6px;margin-bottom:14px}
+  .pill-tabs button{border:1px solid var(--border);background:#fff;padding:7px 12px;border-radius:99px;font-size:12.5px;font-weight:600;cursor:pointer;color:var(--muted)}
+  .pill-tabs button.active{background:var(--text);color:#fff;border-color:var(--text)}
+  .modal-backdrop{position:fixed;inset:0;background:rgba(15,18,25,.45);display:flex;align-items:flex-start;justify-content:center;padding:5vh 16px;overflow:auto;z-index:100}
+  .modal{background:#fff;border-radius:12px;padding:22px;max-width:680px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,.25)}
+  .modal h2{margin-top:0}
+  .modal-close{float:right;background:none;border:none;font-size:18px;cursor:pointer;color:var(--muted)}
+  .compare{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  .compare .side{border:1px solid var(--border);border-radius:8px;padding:12px}
+  .compare .side h3{margin:0 0 8px;font-size:12px;color:var(--muted);text-transform:uppercase}
+  .compare dl{margin:0;display:grid;grid-template-columns:auto 1fr;gap:4px 10px;font-size:12.5px}
+  .compare dt{color:var(--muted)}
+  .compare dd{margin:0;font-variant-numeric:tabular-nums;text-align:right}
+  .diff{color:var(--red);font-weight:700}
+  .toast{position:fixed;bottom:18px;right:18px;background:#111827;color:#fff;padding:10px 16px;border-radius:8px;font-size:13px;box-shadow:0 8px 24px rgba(0,0,0,.25);z-index:200;max-width:360px}
+  .link-btn{background:none;border:none;color:var(--primary);cursor:pointer;font-size:12.5px;font-weight:600;padding:0}
+  .chart-bar-row{display:flex;align-items:center;gap:10px;margin-bottom:8px;font-size:12.5px}
+  .chart-bar-row .name{width:110px;color:var(--muted);flex-shrink:0}
+  .chart-bar-track{flex:1;background:var(--gray-bg);border-radius:5px;height:16px;overflow:hidden}
+  .chart-bar-fill{height:100%;border-radius:5px}
+  .chart-bar-row .amt{width:110px;text-align:right;font-variant-numeric:tabular-nums;flex-shrink:0}
+  footer{text-align:center;color:var(--muted);font-size:11.5px;padding:28px 0}
+  .kbd{border:1px solid var(--border);border-radius:4px;padding:0 5px;font-size:11px;background:#fafafa}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>GST Reconciliation Tracker</h1>
+  <span class="sub" id="orgSub">Standalone edition — data stays in this browser</span>
+  <div class="spacer"></div>
+  <div class="save-indicator"><span class="save-dot" id="saveDot"></span><span id="saveLabel">Saved locally</span></div>
+</header>
+
+<nav id="tabs">
+  <button data-tab="dashboard" class="active">Dashboard</button>
+  <button data-tab="clients">Clients &amp; GSTINs</button>
+  <button data-tab="upload">Upload Files</button>
+  <button data-tab="manual">Manual Entry</button>
+  <button data-tab="tracker">Reconciliation Tracker</button>
+  <button data-tab="reports">Reports</button>
+</nav>
+
+<main id="app"></main>
+
+<footer>
+  Everything you enter is stored only in this browser's local storage on this computer — nothing is uploaded anywhere.
+  Use <span class="kbd">Reports → Export backup</span> before clearing browser data, and open this same file in the same browser to keep your history.
+</footer>
+
+<script>
+/* ============================== State & persistence ============================== */
+const STORAGE_KEY = "gstReconTracker.v1";
+const CURRENCY = new Intl.NumberFormat("en-IN", { maximumFractionDigits: 0 });
+const CURRENCY2 = new Intl.NumberFormat("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+function uid(prefix) { return (prefix || "id") + "_" + Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4); }
+function inr(n) { n = Number(n) || 0; return "₹" + CURRENCY.format(Math.round(n)); }
+function inr2(n) { n = Number(n) || 0; return "₹" + CURRENCY2.format(n); }
+function esc(s) { return String(s == null ? "" : s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])); }
+
+function defaultState() {
+  return { clients: [], books: [], gstr2b: [], decisions: {}, auditLog: [], meta: { createdAt: Date.now() } };
+}
+
+let state = loadState();
+let saveTimer = null;
+
+function loadState() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return defaultState();
+    const parsed = JSON.parse(raw);
+    return Object.assign(defaultState(), parsed);
+  } catch (e) {
+    console.error("Could not read saved data, starting fresh.", e);
+    return defaultState();
+  }
+}
+
+function saveState() {
+  const dot = document.getElementById("saveDot"), label = document.getElementById("saveLabel");
+  if (dot) { dot.classList.add("saving"); }
+  if (label) label.textContent = "Saving…";
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(() => {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+      if (label) label.textContent = "Saved locally";
+    } catch (e) {
+      if (label) label.textContent = "Could not save (storage full?)";
+      console.error(e);
+    }
+    if (dot) dot.classList.remove("saving");
+  }, 150);
+}
+
+function audit(action, detail) {
+  state.auditLog.unshift({ id: uid("log"), ts: Date.now(), action, detail: detail || "" });
+  state.auditLog = state.auditLog.slice(0, 500);
+}
+
+/* ============================== Domain helpers ============================== */
+function normalizeGstin(s) { return String(s || "").toUpperCase().replace(/[^0-9A-Z]/g, ""); }
+function isValidGstinFormat(s) { return /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$/.test(normalizeGstin(s)); }
+function normInvoiceNo(s) { return String(s || "").toUpperCase().replace(/[^0-9A-Z]/g, ""); }
+
+function parseDateFlexible(v) {
+  if (v == null || v === "") return null;
+  if (v instanceof Date && !isNaN(v)) return v;
+  if (typeof v === "number") {
+    // Excel serial date
+    const d = new Date(Math.round((v - 25569) * 86400 * 1000));
+    return isNaN(d) ? null : d;
+  }
+  const s = String(v).trim();
+  let m = /^(\d{4})-(\d{1,2})-(\d{1,2})/.exec(s);
+  if (m) return safeDate(+m[1], +m[2], +m[3]);
+  m = /^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/.exec(s);
+  if (m) return safeDate(+m[3], +m[2], +m[1]); // DD-MM-YYYY / DD/MM/YYYY (Indian convention)
+  m = /^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2})$/.exec(s);
+  if (m) return safeDate(2000 + +m[3], +m[2], +m[1]);
+  const d = new Date(s);
+  return isNaN(d) ? null : d;
+}
+function safeDate(y, mo, d) { const dt = new Date(Date.UTC(y, mo - 1, d)); return isNaN(dt) ? null : dt; }
+function fmtDate(d) { if (!d) return ""; const dt = (d instanceof Date) ? d : parseDateFlexible(d); if (!dt) return String(d); return dt.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric", timeZone: "UTC" }); }
+function periodOf(d) { const dt = (d instanceof Date) ? d : parseDateFlexible(d); if (!dt) return ""; return String(dt.getUTCMonth() + 1).padStart(2, "0") + "-" + dt.getUTCFullYear(); }
+
+function num(v) { const n = Number(String(v == null ? "" : v).replace(/,/g, "")); return Number.isFinite(n) ? n : 0; }
+
+/* ---- flexible CSV / row-matrix -> document mapping (shared by Books and GSTR-2B uploads) ---- */
+const COLUMN_ALIASES = {
+  gstin: ["gstin", "supplier gstin", "ctin", "vendor gstin", "party gstin"],
+  name: ["supplier name", "trade name", "vendor name", "party name", "name", "trdnm"],
+  invoiceNo: ["invoice number", "invoice no", "invoice no.", "inv no", "document number", "inum", "bill no"],
+  date: ["invoice date", "date", "inv date", "document date", "dt", "bill date"],
+  taxable: ["taxable value", "taxable amount", "txval", "taxable"],
+  igst: ["igst", "igst amount"],
+  cgst: ["cgst", "cgst amount"],
+  sgst: ["sgst", "sgst amount", "sgst/utgst"],
+  cess: ["cess", "cess amount"],
+};
+function normHeader(h) { return String(h || "").toLowerCase().replace(/[.#]/g, "").replace(/\s+/g, " ").trim(); }
+function detectHeaderRow(matrix) {
+  for (let i = 0; i < Math.min(matrix.length, 15); i++) {
+    const cells = (matrix[i] || []).map(normHeader);
+    const hasGstin = cells.some((c) => COLUMN_ALIASES.gstin.includes(c));
+    const hasInvoice = cells.some((c) => COLUMN_ALIASES.invoiceNo.includes(c));
+    if (hasGstin && hasInvoice) return i;
+  }
+  return -1;
+}
+function mapMatrixToDocs(matrix, sourceLabel) {
+  const issues = [];
+  const headerIdx = detectHeaderRow(matrix);
+  if (headerIdx < 0) { issues.push("Could not find a header row with a GSTIN and Invoice Number column."); return { docs: [], issues }; }
+  const headers = matrix[headerIdx].map(normHeader);
+  const colIndex = (aliases) => headers.findIndex((h) => aliases.includes(h));
+  const idx = {
+    gstin: colIndex(COLUMN_ALIASES.gstin), name: colIndex(COLUMN_ALIASES.name), invoiceNo: colIndex(COLUMN_ALIASES.invoiceNo),
+    date: colIndex(COLUMN_ALIASES.date), taxable: colIndex(COLUMN_ALIASES.taxable), igst: colIndex(COLUMN_ALIASES.igst),
+    cgst: colIndex(COLUMN_ALIASES.cgst), sgst: colIndex(COLUMN_ALIASES.sgst), cess: colIndex(COLUMN_ALIASES.cess),
+  };
+  if (idx.gstin < 0 || idx.invoiceNo < 0) { issues.push("Missing required column(s): Supplier GSTIN and/or Invoice Number."); return { docs: [], issues }; }
+  const docs = [];
+  for (let r = headerIdx + 1; r < matrix.length; r++) {
+    const row = matrix[r] || [];
+    if (!row.some((c) => c !== "" && c != null)) continue;
+    const gstin = normalizeGstin(row[idx.gstin]);
+    const invoiceNo = String(row[idx.invoiceNo] ?? "").trim();
+    if (!gstin && !invoiceNo) continue;
+    const dateVal = idx.date >= 0 ? row[idx.date] : null;
+    const date = parseDateFlexible(dateVal);
+    const doc = {
+      id: uid("doc"), source: sourceLabel, supplierGstin: gstin, supplierName: idx.name >= 0 ? String(row[idx.name] ?? "").trim() : "",
+      invoiceNumber: invoiceNo, invoiceDate: date ? date.toISOString() : null,
+      taxableValue: idx.taxable >= 0 ? num(row[idx.taxable]) : 0, igst: idx.igst >= 0 ? num(row[idx.igst]) : 0,
+      cgst: idx.cgst >= 0 ? num(row[idx.cgst]) : 0, sgst: idx.sgst >= 0 ? num(row[idx.sgst]) : 0, cess: idx.cess >= 0 ? num(row[idx.cess]) : 0,
+    };
+    if (!isValidGstinFormat(doc.supplierGstin)) issues.push(`Row ${r + 1}: supplier GSTIN "${row[idx.gstin] ?? ""}" doesn't look valid — kept anyway.`);
+    if (!doc.invoiceNumber) { issues.push(`Row ${r + 1}: missing invoice number — skipped.`); continue; }
+    docs.push(doc);
+  }
+  return { docs, issues };
+}
+
+/* ---- GSTR-2B portal JSON ---- */
+function parseGstr2bJson(input) {
+  const issues = [];
+  const root = input && input.data ? input.data : input;
+  if (!root || typeof root !== "object") return { docs: [], issues: ["Not a recognisable GSTR-2B JSON file."] };
+  const docdata = root.docdata || root;
+  const docs = [];
+  const sections = [["b2b", "inv"], ["cdnr", "nt"]];
+  for (const [key, itemsKey] of sections) {
+    const suppliers = Array.isArray(docdata[key]) ? docdata[key] : [];
+    for (const supplier of suppliers) {
+      const items = Array.isArray(supplier[itemsKey]) ? supplier[itemsKey] : [];
+      for (const d of items) {
+        const gstin = normalizeGstin(supplier.ctin);
+        const invoiceNumber = String(d.inum ?? d.ntnum ?? "").trim();
+        const date = parseDateFlexible(d.dt);
+        const lineItems = Array.isArray(d.items) ? d.items : [];
+        const sum = (k) => lineItems.length ? lineItems.reduce((s, it) => s + num(it[k]), 0) : num(d[k]);
+        if (!invoiceNumber) continue;
+        docs.push({
+          id: uid("doc"), source: "gstr2b", supplierGstin: gstin, supplierName: supplier.trdnm || "",
+          invoiceNumber, invoiceDate: date ? date.toISOString() : null,
+          taxableValue: sum("txval"), igst: sum("igst"), cgst: sum("cgst"), sgst: sum("sgst"), cess: sum("cess"),
+        });
+      }
+    }
+  }
+  if (!docs.length) issues.push("No B2B or B2B-CDNR documents were found in this JSON file.");
+  return { docs, issues };
+}
+
+/* ---- CSV parsing (small hand-rolled parser, quoted fields supported) ---- */
+function parseCsv(text) {
+  const rows = []; let row = [], field = "", inQuotes = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (inQuotes) {
+      if (c === '"') { if (text[i + 1] === '"') { field += '"'; i++; } else inQuotes = false; }
+      else field += c;
+    } else if (c === '"') inQuotes = true;
+    else if (c === ",") { row.push(field); field = ""; }
+    else if (c === "\n" || c === "\r") { if (c === "\r" && text[i + 1] === "\n") i++; row.push(field); rows.push(row); row = []; field = ""; }
+    else field += c;
+  }
+  if (field.length || row.length) { row.push(field); rows.push(row); }
+  return rows.filter((r) => r.length > 1 || (r[0] || "").trim() !== "");
+}
+
+function sheetToMatrix(ws) {
+  const range = XLSX.utils.decode_range(ws["!ref"] || "A1:A1");
+  const matrix = [];
+  for (let r = range.s.r; r <= range.e.r; r++) {
+    const row = [];
+    for (let c = range.s.c; c <= range.e.c; c++) {
+      const cell = ws[XLSX.utils.encode_cell({ r, c })];
+      row.push(cell ? cell.v : "");
+    }
+    matrix.push(row);
+  }
+  return matrix;
+}
+
+/* ---- Import a file (csv / xlsx / json) into books or gstr2b ---- */
+function importFile(file, kind /* 'books' | 'gstr2b' */, clientId, gstinId) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    const isJson = /\.json$/i.test(file.name);
+    const isXlsx = /\.xlsx?$/i.test(file.name);
+    reader.onerror = () => reject(new Error("Could not read the file."));
+    reader.onload = () => {
+      try {
+        let docs = [], issues = [];
+        if (isJson) {
+          const json = JSON.parse(reader.result);
+          ({ docs, issues } = parseGstr2bJson(json));
+        } else if (isXlsx) {
+          const wb = XLSX.read(reader.result, { type: "array", cellDates: false });
+          let sheetNames = wb.SheetNames;
+          if (kind === "gstr2b") {
+            const portalSheets = sheetNames.filter((n) => /^b2b(-|\s)?(cdnr)?$/i.test(n.trim()));
+            if (portalSheets.length) sheetNames = portalSheets;
+          }
+          for (const name of sheetNames) {
+            const matrix = sheetToMatrix(wb.Sheets[name]);
+            const r = mapMatrixToDocs(matrix, kind);
+            docs = docs.concat(r.docs); issues = issues.concat(r.issues);
+          }
+        } else {
+          const matrix = parseCsv(reader.result);
+          ({ docs, issues } = mapMatrixToDocs(matrix, kind));
+        }
+        docs.forEach((d) => { d.clientId = clientId; d.gstinId = gstinId; d.period = d.invoiceDate ? periodOf(d.invoiceDate) : ""; d.fileName = file.name; d.importedAt = Date.now(); });
+        resolve({ docs, issues });
+      } catch (e) { reject(e); }
+    };
+    if (isXlsx) reader.readAsArrayBuffer(file); else reader.readAsText(file);
+  });
+}
+
+/* ============================== Matching engine ============================== */
+const AMOUNT_TOLERANCE = 2; // rupees
+function amountsClose(a, b) {
+  return Math.abs(a.taxableValue - b.taxableValue) <= AMOUNT_TOLERANCE && Math.abs(a.igst - b.igst) <= AMOUNT_TOLERANCE &&
+    Math.abs(a.cgst - b.cgst) <= AMOUNT_TOLERANCE && Math.abs(a.sgst - b.sgst) <= AMOUNT_TOLERANCE;
+}
+function docKey(d) { return d.supplierGstin + "|" + normInvoiceNo(d.invoiceNumber); }
+function daysBetween(a, b) { if (!a || !b) return Infinity; return Math.abs(new Date(a) - new Date(b)) / 86400000; }
+
+function runReconciliation(gstinId) {
+  const books = state.books.filter((d) => d.gstinId === gstinId);
+  const gstr2b = state.gstr2b.filter((d) => d.gstinId === gstinId);
+  const results = [];
+  const usedBooks = new Set(), used2b = new Set();
+
+  // Exact key match
+  const map2b = new Map();
+  gstr2b.forEach((d) => { const k = docKey(d); if (!map2b.has(k)) map2b.set(k, []); map2b.get(k).push(d); });
+
+  books.forEach((b) => {
+    const k = docKey(b);
+    const candidates = (map2b.get(k) || []).filter((d) => !used2b.has(d.id));
+    if (candidates.length) {
+      const match = candidates[0];
+      usedBooks.add(b.id); used2b.add(match.id);
+      const ok = amountsClose(b, match);
+      results.push({ id: uid("res"), gstinId, status: ok ? "MATCHED" : "VARIANCE", book: b, gstr2b: match, matchType: "exact" });
+    }
+  });
+
+  // Fuzzy match on remaining: same GSTIN, date within 5 days, amounts close
+  const remainingBooks = books.filter((b) => !usedBooks.has(b.id));
+  const remaining2b = gstr2b.filter((d) => !used2b.has(d.id));
+  remainingBooks.forEach((b) => {
+    let best = null, bestScore = Infinity;
+    remaining2b.forEach((d) => {
+      if (used2b.has(d.id) || d.supplierGstin !== b.supplierGstin) return;
+      if (!amountsClose(b, d)) return;
+      const dd = daysBetween(b.invoiceDate, d.invoiceDate);
+      if (dd <= 5 && dd < bestScore) { best = d; bestScore = dd; }
+    });
+    if (best) { usedBooks.add(b.id); used2b.add(best.id); results.push({ id: uid("res"), gstinId, status: "FUZZY", book: b, gstr2b: best, matchType: "fuzzy" }); }
+  });
+
+  // Duplicates within books (same key appearing more than once)
+  const bookKeyCount = new Map();
+  books.forEach((b) => { const k = docKey(b); bookKeyCount.set(k, (bookKeyCount.get(k) || 0) + 1); });
+
+  books.filter((b) => !usedBooks.has(b.id)).forEach((b) => {
+    const dup = bookKeyCount.get(docKey(b)) > 1;
+    results.push({ id: uid("res"), gstinId, status: dup ? "DUPLICATE" : "MISSING_IN_2B", book: b, gstr2b: null, matchType: "none" });
+  });
+  gstr2b.filter((d) => !used2b.has(d.id)).forEach((d) => {
+    results.push({ id: uid("res"), gstinId, status: "MISSING_IN_BOOKS", book: null, gstr2b: d, matchType: "none" });
+  });
+
+  results.forEach((r) => { r.key = (r.book ? docKey(r.book) : "") + "::" + (r.gstr2b ? docKey(r.gstr2b) : "") + "::" + r.id.slice(-4); });
+  return results;
+}
+
+const STATUS_META = {
+  MATCHED: { label: "Matched", cls: "matched" },
+  FUZZY: { label: "Likely match", cls: "fuzzy" },
+  VARIANCE: { label: "Amount mismatch", cls: "variance" },
+  MISSING_IN_2B: { label: "Missing in GSTR-2B", cls: "missing2b" },
+  MISSING_IN_BOOKS: { label: "Missing in books", cls: "missingbooks" },
+  DUPLICATE: { label: "Duplicate in books", cls: "duplicate" },
+};
+const DECISION_META = {
+  pending: { label: "Pending", cls: "pending" }, accepted: { label: "Accepted", cls: "accepted" },
+  flagged: { label: "Flagged", cls: "flagged" }, followup: { label: "Follow-up", cls: "followup" },
+};
+
+/* ============================== UI state & rendering ============================== */
+let activeTab = "dashboard";
+let filters = { gstinId: "", status: "", decision: "", search: "" };
+let currentResults = [];
+let openDetailId = null;
+
+function getGstinOptions() {
+  const opts = [];
+  state.clients.forEach((c) => c.gstins.forEach((g) => opts.push({ id: g.id, clientId: c.id, label: `${c.name} — ${g.gstin}` })));
+  return opts;
+}
+function findGstin(id) { for (const c of state.clients) { const g = c.gstins.find((x) => x.id === id); if (g) return { gstin: g, client: c }; } return null; }
+
+function render() {
+  document.querySelectorAll("nav button").forEach((b) => b.classList.toggle("active", b.dataset.tab === activeTab));
+  const app = document.getElementById("app");
+  app.innerHTML = ({ dashboard: renderDashboard, clients: renderClients, upload: renderUpload, manual: renderManual, tracker: renderTracker, reports: renderReports }[activeTab] || renderDashboard)();
+  wireTabEvents();
+}
+
+/* ---- Dashboard ---- */
+function renderDashboard() {
+  const gstinOpts = getGstinOptions();
+  if (!gstinOpts.length) return `<div class="card"><div class="empty">Add a client and GSTIN first to see the dashboard.<br><br><button class="btn" onclick="switchTab('clients')">Add a client</button></div></div>`;
+  const gstinId = filters.gstinId || gstinOpts[0].id;
+  const results = runReconciliation(gstinId);
+  const byStatus = {}; Object.keys(STATUS_META).forEach((k) => (byStatus[k] = 0));
+  let booksItc = 0, gstr2bItc = 0;
+  results.forEach((r) => {
+    byStatus[r.status]++;
+    if (r.book) booksItc += r.book.igst + r.book.cgst + r.book.sgst;
+    if (r.gstr2b) gstr2bItc += r.gstr2b.igst + r.gstr2b.cgst + r.gstr2b.sgst;
+  });
+  const total = results.length || 1;
+  const topVendors = {};
+  results.forEach((r) => {
+    const doc = r.book || r.gstr2b; if (!doc) return;
+    const name = doc.supplierName || doc.supplierGstin || "Unknown";
+    topVendors[name] = (topVendors[name] || 0) + (doc.taxableValue + doc.igst + doc.cgst + doc.sgst);
+  });
+  const topList = Object.entries(topVendors).sort((a, b) => b[1] - a[1]).slice(0, 6);
+  const maxVendor = Math.max(1, ...topList.map((x) => x[1]));
+  const colors = { MATCHED: "#0f9d58", FUZZY: "#2563eb", VARIANCE: "#b45309", MISSING_IN_2B: "#c0362c", MISSING_IN_BOOKS: "#b45309", DUPLICATE: "#6b7280" };
+
+  return `
+  <div class="toolbar"><label style="margin:0">GSTIN&nbsp;</label><select id="dashGstin">${gstinOpts.map((o) => `<option value="${o.id}" ${o.id === gstinId ? "selected" : ""}>${esc(o.label)}</option>`).join("")}</select></div>
+  <div class="grid cols-4" style="margin-bottom:14px">
+    <div class="stat"><div class="label">ITC in books</div><div class="value">${inr(booksItc)}</div></div>
+    <div class="stat"><div class="label">ITC in GSTR-2B</div><div class="value">${inr(gstr2bItc)}</div></div>
+    <div class="stat"><div class="label">Difference</div><div class="value ${Math.abs(booksItc - gstr2bItc) < 1 ? "green" : "amber"}">${inr(booksItc - gstr2bItc)}</div></div>
+    <div class="stat"><div class="label">Matched</div><div class="value green">${byStatus.MATCHED + byStatus.FUZZY} / ${total}</div></div>
+  </div>
+  <div class="grid cols-2">
+    <div class="card">
+      <h2>Status breakdown</h2><p class="hint">Click a status to open it in the tracker.</p>
+      ${Object.keys(STATUS_META).map((k) => {
+        const pct = Math.round((byStatus[k] / total) * 100);
+        return `<div class="chart-bar-row" style="cursor:pointer" onclick="openStatusFromDashboard('${gstinId}','${k}')">
+          <div class="name">${STATUS_META[k].label}</div>
+          <div class="chart-bar-track"><div class="chart-bar-fill" style="width:${pct}%;background:${colors[k]}"></div></div>
+          <div class="amt">${byStatus[k]}</div></div>`;
+      }).join("")}
+    </div>
+    <div class="card">
+      <h2>Top suppliers by value</h2><p class="hint">Taxable value + tax, matched and unmatched combined.</p>
+      ${topList.length ? topList.map(([name, val]) => `<div class="chart-bar-row"><div class="name" title="${esc(name)}">${esc(name.length > 16 ? name.slice(0, 15) + "…" : name)}</div><div class="chart-bar-track"><div class="chart-bar-fill" style="width:${Math.round((val / maxVendor) * 100)}%;background:#2563eb"></div></div><div class="amt">${inr(val)}</div></div>`).join("") : '<div class="empty">No data yet.</div>'}
+    </div>
+  </div>`;
+}
+function openStatusFromDashboard(gstinId, status) { filters = { gstinId, status, decision: "", search: "" }; switchTab("tracker"); }
+
+/* ---- Clients & GSTINs ---- */
+function renderClients() {
+  return `
+  <div class="grid cols-2">
+    <div class="card">
+      <h2>Add a client</h2>
+      <div class="field"><label>Client name</label><input id="newClientName" type="text" placeholder="e.g. Skydo Technologies" /></div>
+      <button class="btn" onclick="addClient()">Add client</button>
+    </div>
+    <div class="card">
+      <h2>Add a GSTIN</h2>
+      <div class="field"><label>Client</label><select id="gstinClient">${state.clients.map((c) => `<option value="${c.id}">${esc(c.name)}</option>`).join("") || "<option disabled selected>Add a client first</option>"}</select></div>
+      <div class="row">
+        <div class="field"><label>GSTIN</label><input id="newGstin" type="text" placeholder="15-character GSTIN" maxlength="15" style="text-transform:uppercase" /></div>
+        <div class="field"><label>Label (optional)</label><input id="newGstinLabel" type="text" placeholder="e.g. Karnataka HQ" /></div>
+      </div>
+      <button class="btn" ${state.clients.length ? "" : "disabled"} onclick="addGstin()">Add GSTIN</button>
+    </div>
+  </div>
+  <div class="card" style="margin-top:14px">
+    <h2>Clients</h2>
+    ${state.clients.length ? `<table><thead><tr><th>Client</th><th>GSTINs</th><th></th></tr></thead><tbody>
+      ${state.clients.map((c) => `<tr><td>${esc(c.name)}</td><td>${c.gstins.map((g) => `<span class="badge pending" style="margin:2px 4px 2px 0">${esc(g.gstin)}${g.label ? " · " + esc(g.label) : ""}</span>`).join("") || "<span class=\"hint\">none yet</span>"}</td>
+      <td><button class="icon-btn" title="Delete client and its data" onclick="deleteClient('${c.id}')">Delete</button></td></tr>`).join("")}
+    </tbody></table>` : '<div class="empty">No clients yet. Add one above to get started.</div>'}
+  </div>`;
+}
+function addClient() {
+  const name = document.getElementById("newClientName").value.trim();
+  if (!name) return toast("Enter a client name.");
+  state.clients.push({ id: uid("client"), name, gstins: [] });
+  audit("client_added", name); saveState(); switchTab("clients");
+}
+function addGstin() {
+  const clientId = document.getElementById("gstinClient").value;
+  const gstin = normalizeGstin(document.getElementById("newGstin").value);
+  const label = document.getElementById("newGstinLabel").value.trim();
+  const client = state.clients.find((c) => c.id === clientId);
+  if (!client) return toast("Add a client first.");
+  if (!gstin) return toast("Enter a GSTIN.");
+  if (!isValidGstinFormat(gstin)) { if (!confirm(`"${gstin}" doesn't match the usual GSTIN format. Add it anyway?`)) return; }
+  client.gstins.push({ id: uid("gstin"), gstin, label });
+  audit("gstin_added", gstin); saveState(); switchTab("clients");
+}
+function deleteClient(clientId) {
+  const client = state.clients.find((c) => c.id === clientId); if (!client) return;
+  if (!confirm(`Delete "${client.name}" and all its uploaded invoices and decisions? This can't be undone.`)) return;
+  const gstinIds = new Set(client.gstins.map((g) => g.id));
+  state.books = state.books.filter((d) => !gstinIds.has(d.gstinId));
+  state.gstr2b = state.gstr2b.filter((d) => !gstinIds.has(d.gstinId));
+  state.clients = state.clients.filter((c) => c.id !== clientId);
+  audit("client_deleted", client.name); saveState(); switchTab("clients");
+}
+
+/* ---- Upload ---- */
+function renderUpload() {
+  const gstinOpts = getGstinOptions();
+  if (!gstinOpts.length) return `<div class="card"><div class="empty">Add a client and GSTIN first — <button class="link-btn" onclick="switchTab('clients')">do that now</button>.</div></div>`;
+  return `
+  <div class="field" style="max-width:420px"><label>GSTIN</label><select id="uploadGstin">${gstinOpts.map((o) => `<option value="${o.id}">${esc(o.label)}</option>`).join("")}</select></div>
+  <div class="grid cols-2">
+    <div class="card">
+      <h2>Purchase invoices (books)</h2><p class="hint">.csv or .xlsx from Tally, Zoho, or any export with GSTIN, invoice number, date and tax amounts.</p>
+      <div class="drop" id="dropBooks" onclick="document.getElementById('fileBooks').click()">Click or drop a .csv / .xlsx file here<input type="file" id="fileBooks" accept=".csv,.xlsx,.xls" /></div>
+      <div id="resultBooks"></div>
+    </div>
+    <div class="card">
+      <h2>GSTR-2B</h2><p class="hint">The Excel or JSON exactly as downloaded from the GST portal, or a .csv with the same columns.</p>
+      <div class="drop" id="dropGstr2b" onclick="document.getElementById('fileGstr2b').click()">Click or drop a .csv / .xlsx / .json file here<input type="file" id="fileGstr2b" accept=".csv,.xlsx,.xls,.json" /></div>
+      <div id="resultGstr2b"></div>
+    </div>
+  </div>`;
+}
+function wireUploadHandlers() {
+  [["fileBooks", "dropBooks", "books", "resultBooks"], ["fileGstr2b", "dropGstr2b", "gstr2b", "resultGstr2b"]].forEach(([inputId, dropId, kind, resultId]) => {
+    const input = document.getElementById(inputId), drop = document.getElementById(dropId);
+    if (!input) return;
+    input.addEventListener("change", () => { if (input.files[0]) handleUpload(input.files[0], kind, resultId); });
+    drop.addEventListener("dragover", (e) => { e.preventDefault(); drop.classList.add("drag"); });
+    drop.addEventListener("dragleave", () => drop.classList.remove("drag"));
+    drop.addEventListener("drop", (e) => { e.preventDefault(); drop.classList.remove("drag"); if (e.dataTransfer.files[0]) handleUpload(e.dataTransfer.files[0], kind, resultId); });
+  });
+}
+async function handleUpload(file, kind, resultId) {
+  const gstinSel = document.getElementById("uploadGstin");
+  const gstinId = gstinSel.value; const found = findGstin(gstinId);
+  const box = document.getElementById(resultId);
+  box.innerHTML = `<p class="hint">Reading ${esc(file.name)}…</p>`;
+  try {
+    const { docs, issues } = await importFile(file, kind, found.client.id, gstinId);
+    if (docs.length) {
+      state[kind] = state[kind].concat(docs);
+      audit(kind + "_imported", `${docs.length} rows from ${file.name}`); saveState();
+    }
+    box.innerHTML = `
+      <p><strong>${docs.length}</strong> row(s) imported${issues.length ? `, ${issues.length} issue(s):` : "."}</p>
+      ${issues.length ? `<ul style="margin:4px 0;padding-left:18px;color:var(--amber);font-size:12px">${issues.slice(0, 8).map((i) => `<li>${esc(i)}</li>`).join("")}${issues.length > 8 ? `<li>…and ${issues.length - 8} more</li>` : ""}</ul>` : ""}
+      ${docs.length ? `<button class="link-btn" onclick="switchTab('tracker')">Go to the reconciliation tracker →</button>` : ""}`;
+  } catch (e) { box.innerHTML = `<p style="color:var(--red)">Couldn't read that file: ${esc(e.message)}</p>`; }
+}
+
+/* ---- Manual entry ---- */
+function renderManual() {
+  const gstinOpts = getGstinOptions();
+  if (!gstinOpts.length) return `<div class="card"><div class="empty">Add a client and GSTIN first — <button class="link-btn" onclick="switchTab('clients')">do that now</button>.</div></div>`;
+  return `
+  <div class="card" style="max-width:640px">
+    <h2>Add a single invoice</h2><p class="hint">For a stray bill that didn't come through an upload.</p>
+    <div class="field"><label>GSTIN</label><select id="manGstin">${gstinOpts.map((o) => `<option value="${o.id}">${esc(o.label)}</option>`).join("")}</select></div>
+    <div class="field"><label>This is a</label><select id="manKind"><option value="books">Purchase invoice (books)</option><option value="gstr2b">GSTR-2B entry</option></select></div>
+    <div class="row">
+      <div class="field"><label>Supplier GSTIN</label><input id="manSupplierGstin" type="text" maxlength="15" style="text-transform:uppercase" /></div>
+      <div class="field"><label>Supplier name</label><input id="manSupplierName" type="text" /></div>
+    </div>
+    <div class="row">
+      <div class="field"><label>Invoice number</label><input id="manInvoiceNo" type="text" /></div>
+      <div class="field"><label>Invoice date</label><input id="manInvoiceDate" type="date" /></div>
+    </div>
+    <div class="row">
+      <div class="field"><label>Taxable value</label><input id="manTaxable" type="number" step="0.01" /></div>
+      <div class="field"><label>IGST</label><input id="manIgst" type="number" step="0.01" /></div>
+      <div class="field"><label>CGST</label><input id="manCgst" type="number" step="0.01" /></div>
+      <div class="field"><label>SGST</label><input id="manSgst" type="number" step="0.01" /></div>
+    </div>
+    <button class="btn" onclick="addManual()">Add invoice</button>
+  </div>`;
+}
+function addManual() {
+  const gstinId = document.getElementById("manGstin").value, kind = document.getElementById("manKind").value;
+  const found = findGstin(gstinId);
+  const supplierGstin = normalizeGstin(document.getElementById("manSupplierGstin").value);
+  const invoiceNumber = document.getElementById("manInvoiceNo").value.trim();
+  if (!supplierGstin || !invoiceNumber) return toast("Supplier GSTIN and invoice number are required.");
+  const dateVal = document.getElementById("manInvoiceDate").value;
+  const doc = {
+    id: uid("doc"), source: kind === "books" ? "manual-books" : "manual-gstr2b", clientId: found.client.id, gstinId,
+    supplierGstin, supplierName: document.getElementById("manSupplierName").value.trim(),
+    invoiceNumber, invoiceDate: dateVal ? new Date(dateVal + "T00:00:00Z").toISOString() : null,
+    taxableValue: num(document.getElementById("manTaxable").value), igst: num(document.getElementById("manIgst").value),
+    cgst: num(document.getElementById("manCgst").value), sgst: num(document.getElementById("manSgst").value), cess: 0,
+    period: dateVal ? periodOf(new Date(dateVal)) : "", importedAt: Date.now(),
+  };
+  state[kind].push(doc); audit(kind + "_manual", `${invoiceNumber} (${supplierGstin})`); saveState();
+  toast("Invoice added."); switchTab("manual");
+}
+
+/* ---- Reconciliation tracker ---- */
+function renderTracker() {
+  const gstinOpts = getGstinOptions();
+  if (!gstinOpts.length) return `<div class="card"><div class="empty">Add a client and GSTIN first — <button class="link-btn" onclick="switchTab('clients')">do that now</button>.</div></div>`;
+  const gstinId = filters.gstinId || gstinOpts[0].id;
+  filters.gstinId = gstinId;
+  currentResults = runReconciliation(gstinId);
+  let rows = currentResults;
+  if (filters.status) rows = rows.filter((r) => r.status === filters.status);
+  if (filters.decision) rows = rows.filter((r) => (state.decisions[r.key]?.status || "pending") === filters.decision);
+  if (filters.search) {
+    const q = filters.search.toLowerCase();
+    rows = rows.filter((r) => {
+      const doc = r.book || r.gstr2b;
+      return (doc?.supplierName || "").toLowerCase().includes(q) || (doc?.supplierGstin || "").toLowerCase().includes(q) || (doc?.invoiceNumber || "").toLowerCase().includes(q);
+    });
+  }
+  return `
+  <div class="toolbar">
+    <select id="trkGstin">${gstinOpts.map((o) => `<option value="${o.id}" ${o.id === gstinId ? "selected" : ""}>${esc(o.label)}</option>`).join("")}</select>
+    <select id="trkStatus"><option value="">All statuses</option>${Object.keys(STATUS_META).map((k) => `<option value="${k}" ${filters.status === k ? "selected" : ""}>${STATUS_META[k].label}</option>`).join("")}</select>
+    <select id="trkDecision"><option value="">All decisions</option>${Object.keys(DECISION_META).map((k) => `<option value="${k}" ${filters.decision === k ? "selected" : ""}>${DECISION_META[k].label}</option>`).join("")}</select>
+    <input class="grow" id="trkSearch" type="text" placeholder="Search supplier, GSTIN or invoice no." value="${esc(filters.search)}" />
+    <span class="hint" style="color:var(--muted)">${rows.length} of ${currentResults.length}</span>
+  </div>
+  <div class="card" style="padding:0;overflow:auto">
+    <table><thead><tr><th>Status</th><th>Supplier</th><th>Invoice #</th><th>Date</th><th class="num">Taxable</th><th class="num">Tax</th><th>Decision</th></tr></thead>
+    <tbody>
+    ${rows.length ? rows.map((r) => {
+      const doc = r.book || r.gstr2b; const decision = state.decisions[r.key]?.status || "pending";
+      const tax = (doc.igst || 0) + (doc.cgst || 0) + (doc.sgst || 0);
+      return `<tr class="clickable" onclick="openDetail('${r.id}')">
+        <td><span class="badge ${STATUS_META[r.status].cls}">${STATUS_META[r.status].label}</span></td>
+        <td>${esc(doc.supplierName || "—")}<br><span class="hint" style="color:var(--muted)">${esc(doc.supplierGstin)}</span></td>
+        <td>${esc(doc.invoiceNumber)}</td><td>${fmtDate(doc.invoiceDate)}</td>
+        <td class="num">${inr2(doc.taxableValue)}</td><td class="num">${inr2(tax)}</td>
+        <td><span class="badge ${DECISION_META[decision].cls}">${DECISION_META[decision].label}</span></td>
+      </tr>`;
+    }).join("") : `<tr><td colspan="7"><div class="empty">No rows match. Upload files or adjust filters.</div></td></tr>`}
+    </tbody></table>
+  </div>
+  ${renderDetailModal()}`;
+}
+function renderDetailModal() {
+  if (!openDetailId) return "";
+  const r = currentResults.find((x) => x.id === openDetailId);
+  if (!r) return "";
+  const decision = state.decisions[r.key] || { status: "pending", note: "", owner: "", dueDate: "" };
+  const diffCell = (a, b) => (a != null && b != null && Math.abs(a - b) > AMOUNT_TOLERANCE) ? "diff" : "";
+  const side = (title, doc) => doc ? `
+    <div class="side"><h3>${title}</h3><dl>
+      <dt>Supplier</dt><dd>${esc(doc.supplierName || "—")}</dd>
+      <dt>GSTIN</dt><dd>${esc(doc.supplierGstin)}</dd>
+      <dt>Invoice #</dt><dd>${esc(doc.invoiceNumber)}</dd>
+      <dt>Date</dt><dd>${fmtDate(doc.invoiceDate)}</dd>
+      <dt>Taxable</dt><dd class="${diffCell(r.book?.taxableValue, r.gstr2b?.taxableValue)}">${inr2(doc.taxableValue)}</dd>
+      <dt>IGST</dt><dd class="${diffCell(r.book?.igst, r.gstr2b?.igst)}">${inr2(doc.igst)}</dd>
+      <dt>CGST</dt><dd class="${diffCell(r.book?.cgst, r.gstr2b?.cgst)}">${inr2(doc.cgst)}</dd>
+      <dt>SGST</dt><dd class="${diffCell(r.book?.sgst, r.gstr2b?.sgst)}">${inr2(doc.sgst)}</dd>
+    </dl></div>` : `<div class="side"><h3>${title}</h3><div class="empty" style="padding:10px 0">Not present</div></div>`;
+  return `<div class="modal-backdrop" onclick="if(event.target===this) closeDetail()"><div class="modal">
+    <button class="modal-close" onclick="closeDetail()">✕</button>
+    <h2>${STATUS_META[r.status].label}</h2>
+    <div class="compare">${side("Books", r.book)}${side("GSTR-2B", r.gstr2b)}</div>
+    <div class="card" style="margin-top:14px;border:1px solid var(--border)">
+      <h2>Your decision</h2>
+      <div class="row">
+        <div class="field"><label>Status</label><select id="decStatus">${Object.keys(DECISION_META).map((k) => `<option value="${k}" ${decision.status === k ? "selected" : ""}>${DECISION_META[k].label}</option>`).join("")}</select></div>
+        <div class="field"><label>Follow-up owner</label><input id="decOwner" type="text" value="${esc(decision.owner)}" placeholder="Optional" /></div>
+        <div class="field"><label>Due date</label><input id="decDue" type="date" value="${esc(decision.dueDate)}" /></div>
+      </div>
+      <div class="field"><label>Note</label><textarea id="decNote" rows="3" placeholder="Why, and what needs to happen next">${esc(decision.note)}</textarea></div>
+      <button class="btn" onclick="saveDecision('${r.key}')">Save decision</button>
+    </div>
+  </div></div>`;
+}
+function openDetail(resultId) { openDetailId = resultId; render(); }
+function closeDetail() { openDetailId = null; render(); }
+function saveDecision(key) {
+  state.decisions[key] = {
+    status: document.getElementById("decStatus").value, owner: document.getElementById("decOwner").value.trim(),
+    dueDate: document.getElementById("decDue").value, note: document.getElementById("decNote").value.trim(), updatedAt: Date.now(),
+  };
+  audit("decision_saved", key); saveState(); toast("Decision saved."); closeDetail();
+}
+
+/* ---- Reports ---- */
+function renderReports() {
+  const gstinOpts = getGstinOptions();
+  return `
+  <div class="grid cols-2">
+    <div class="card">
+      <h2>Reconciliation export</h2><p class="hint">All matched, unmatched and variance rows for a GSTIN, with your decisions.</p>
+      <div class="field"><label>GSTIN</label><select id="repGstin">${gstinOpts.map((o) => `<option value="${o.id}">${esc(o.label)}</option>`).join("") || "<option disabled>No GSTINs yet</option>"}</select></div>
+      <button class="btn" ${gstinOpts.length ? "" : "disabled"} onclick="exportReconciliation()">Export CSV</button>
+    </div>
+    <div class="card">
+      <h2>Full backup</h2><p class="hint">Everything in this tracker as one JSON file — keep a copy before clearing your browser, or to move to another computer.</p>
+      <button class="btn secondary" onclick="exportBackup()">Export backup (.json)</button>
+      <div style="margin-top:10px"><label>Restore from backup</label><input type="file" id="restoreFile" accept=".json" /></div>
+    </div>
+  </div>
+  <div class="card" style="margin-top:14px">
+    <h2>Recent activity</h2>
+    ${state.auditLog.length ? `<table><thead><tr><th>When</th><th>Action</th><th>Detail</th></tr></thead><tbody>
+      ${state.auditLog.slice(0, 30).map((l) => `<tr><td>${new Date(l.ts).toLocaleString()}</td><td>${esc(l.action)}</td><td>${esc(l.detail)}</td></tr>`).join("")}
+    </tbody></table>` : '<div class="empty">Nothing yet.</div>'}
+  </div>`;
+}
+function downloadFile(filename, content, mime) {
+  const blob = new Blob([content], { type: mime }); const url = URL.createObjectURL(blob);
+  const a = document.createElement("a"); a.href = url; a.download = filename; document.body.appendChild(a); a.click();
+  document.body.removeChild(a); setTimeout(() => URL.revokeObjectURL(url), 2000);
+}
+function csvCell(v) { const s = String(v == null ? "" : v); return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; }
+function exportReconciliation() {
+  const gstinId = document.getElementById("repGstin").value;
+  const results = runReconciliation(gstinId);
+  const header = ["Status", "Supplier Name", "Supplier GSTIN", "Invoice Number", "Invoice Date", "Taxable Value", "IGST", "CGST", "SGST", "In Books", "In GSTR-2B", "Decision", "Decision Note", "Follow-up Owner", "Due Date"];
+  const lines = [header.join(",")];
+  results.forEach((r) => {
+    const doc = r.book || r.gstr2b; const decision = state.decisions[r.key] || {};
+    lines.push([STATUS_META[r.status].label, doc.supplierName, doc.supplierGstin, doc.invoiceNumber, fmtDate(doc.invoiceDate), doc.taxableValue, doc.igst, doc.cgst, doc.sgst, r.book ? "Yes" : "No", r.gstr2b ? "Yes" : "No", DECISION_META[decision.status || "pending"].label, decision.note || "", decision.owner || "", decision.dueDate || ""].map(csvCell).join(","));
+  });
+  downloadFile(`gst-reconciliation-${gstinId}-${new Date().toISOString().slice(0, 10)}.csv`, lines.join("\n"), "text/csv");
+  audit("export_csv", gstinId);
+}
+function exportBackup() { downloadFile(`gst-tracker-backup-${new Date().toISOString().slice(0, 10)}.json`, JSON.stringify(state, null, 2), "application/json"); audit("export_backup", ""); }
+function wireRestoreHandler() {
+  const input = document.getElementById("restoreFile"); if (!input) return;
+  input.addEventListener("change", () => {
+    const file = input.files[0]; if (!file) return;
+    if (!confirm("Restoring will replace everything currently in this tracker. Continue?")) { input.value = ""; return; }
+    const reader = new FileReader();
+    reader.onload = () => { try { state = Object.assign(defaultState(), JSON.parse(reader.result)); audit("restored_backup", file.name); saveState(); toast("Backup restored."); switchTab("dashboard"); } catch (e) { toast("That file doesn't look like a valid backup."); } };
+    reader.readAsText(file);
+  });
+}
+
+/* ============================== Wiring / toasts / tabs ============================== */
+function toast(msg) {
+  const el = document.createElement("div"); el.className = "toast"; el.textContent = msg;
+  document.body.appendChild(el); setTimeout(() => el.remove(), 3200);
+}
+function switchTab(tab) { activeTab = tab; if (tab !== "tracker") openDetailId = null; render(); }
+function wireTabEvents() {
+  if (activeTab === "upload") wireUploadHandlers();
+  if (activeTab === "reports") wireRestoreHandler();
+  if (activeTab === "dashboard") { const sel = document.getElementById("dashGstin"); if (sel) sel.addEventListener("change", () => { filters.gstinId = sel.value; render(); }); }
+  if (activeTab === "tracker") {
+    const g = document.getElementById("trkGstin"), s = document.getElementById("trkStatus"), d = document.getElementById("trkDecision"), q = document.getElementById("trkSearch");
+    if (g) g.addEventListener("change", () => { filters.gstinId = g.value; render(); });
+    if (s) s.addEventListener("change", () => { filters.status = s.value; render(); });
+    if (d) d.addEventListener("change", () => { filters.decision = d.value; render(); });
+    if (q) { q.addEventListener("input", () => { filters.search = q.value; render(); }); q.focus(); q.selectionStart = q.selectionEnd = q.value.length; }
+  }
+}
+document.getElementById("tabs").addEventListener("click", (e) => { const b = e.target.closest("button[data-tab]"); if (b) switchTab(b.dataset.tab); });
+
+render();
+</script>
+</body>
+</html>

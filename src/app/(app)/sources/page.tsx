@@ -55,6 +55,14 @@ export default async function SourcesOverview() {
         ))}
       </div>
 
+      <p className="mb-6 text-xs text-muted-foreground">
+        Working somewhere without this app, or just want a lighter tool? There&apos;s also a{" "}
+        <a className="font-medium underline" href="/standalone.html" target="_blank" rel="noreferrer noopener">
+          single-file offline version
+        </a>{" "}
+        with the same reconciliation logic — no login, no shared database, data stays in that browser.
+      </p>
+
       <h2 className="mb-2 text-sm font-semibold">Import history</h2>
       <div className="rounded-lg border bg-card shadow-sm">
         {jobs.length === 0 ? (
