@@ -27,7 +27,7 @@ COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 # Build-time placeholders only – real values are provided when the container runs. Nothing secret is baked into the image.
 RUN DATABASE_URL="postgresql://build:build@localhost:5432/build" \
-    DIRECT_URL="postgresql://build:build@localhost:5432/build" \
+    DATABASE_URL_UNPOOLED="postgresql://build:build@localhost:5432/build" \
     NEXTAUTH_SECRET="build-time-placeholder" \
     NEXTAUTH_URL="http://localhost:3000" \
     npm run build

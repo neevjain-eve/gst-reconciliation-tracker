@@ -26,7 +26,8 @@ Every month, an accountant pulls purchase bills from books, downloads GSTR-2B fr
 
 - **Dashboard** — ITC in books vs GSTR-2B, matched/unmatched/variance, invoice counts by status, monthly trend, top suppliers by unsupported ITC.
 - **Clients & GSTINs** — one firm, many clients, each with one or more GSTIN registrations and financial years; every view is filterable by client, GSTIN, month, vendor and status.
-- **Four ways to bring in data**: Zoho Books via official OAuth (auto-sync), GSTR-2B/books CSV or XLSX upload (with downloadable templates), manual bill entry, and an optional GSP/GSTN API for GSTR-2B.
+- **Four ways to bring in data**: Zoho Books via official OAuth (auto-sync), GSTR-2B/books CSV or XLSX upload (the GST portal's own GSTR-2B Excel and JSON are read as they are, plus downloadable templates), manual bill entry, and an optional GSP/GSTN API for GSTR-2B.
+- **GST portal helper** — an optional bookmarklet that saves the click-through on the portal after you log in yourself: it picks the return period, presses Search and opens the GSTR-2B download. It never touches your password or CAPTCHA (see [Integration rules](#integration-rules--whats-off-limits)).
 - **Matching engine** — normalises invoice numbers, matches on supplier GSTIN + invoice number + date + amounts, exact then fuzzy (with a confidence score and a plain-English explanation), and classifies every document into one of nine statuses (Matched, Matched with variance, Missing in GSTR-2B, Missing in books, Duplicate invoice, GSTIN mismatch, Invoice number mismatch, Tax mismatch, Needs review). Full write-up: [`docs/RECONCILIATION.md`](docs/RECONCILIATION.md).
 - **Reconciliation tracker** — search, filter, sort, paginate; side-by-side books vs GSTR-2B comparison; accept/reject/review/flag-for-follow-up with notes, an owner and a due date; full audit trail.
 - **Reports** — full reconciliation, vendor-wise summary, monthly ITC summary, missing-in-2B, books-not-in-2B, GSTR-2B-not-in-books, and variance, each exportable as CSV or XLSX.
@@ -37,6 +38,7 @@ Every month, an accountant pulls purchase bills from books, downloads GSTR-2B fr
 - Zoho Books access is **only** through Zoho's official OAuth 2.0 authorization-code flow, with read-only scopes.
 - GSTR-2B comes from a file you upload, or from an **authorised GSP/GSTN API** you configure — never from the GST portal's own web UI.
 - The app never scrapes the GST portal, never automates or bypasses a CAPTCHA, and has no code path that accepts, stores or transmits a GST portal username, password or OTP.
+- The optional **GST portal helper** (Data sources → GST portal helper) is a bookmarklet that runs in the user's own browser, on the portal, only when they click it, and only after they have logged in themselves. It selects the return period and presses the portal's own Search / Download / Generate Excel buttons; it never reads or fills the login form, never handles a CAPTCHA, and makes no network requests of its own. The app never sees the user's portal session — the downloaded file is uploaded here like any other file.
 
 See [`docs/INTEGRATIONS.md`](docs/INTEGRATIONS.md) for exactly how each integration works, and [`SECURITY.md`](SECURITY.md) for the security design.
 
@@ -64,7 +66,7 @@ npm install
 cp .env.example .env
 ```
 
-Fill in `.env`: at minimum, `DATABASE_URL`/`DIRECT_URL`, `NEXTAUTH_SECRET` (`openssl rand -base64 32`), and `ENCRYPTION_KEY` (`openssl rand -base64 32`). Everything else (Zoho, GSP, cron) is optional — the app runs fully on file upload and manual entry without them.
+Fill in `.env`: at minimum, `DATABASE_URL`/`DATABASE_URL_UNPOOLED`, `NEXTAUTH_SECRET` (`openssl rand -base64 32`), and `ENCRYPTION_KEY` (`openssl rand -base64 32`). Everything else (Zoho, GSP, cron) is optional — the app runs fully on file upload and manual entry without them.
 
 **Database**, either:
 
@@ -72,7 +74,7 @@ Fill in `.env`: at minimum, `DATABASE_URL`/`DIRECT_URL`, `NEXTAUTH_SECRET` (`ope
 docker compose up -d db          # PostgreSQL in Docker, matching the .env.example defaults
 ```
 
-or point `DATABASE_URL`/`DIRECT_URL` at your own PostgreSQL instance.
+or point `DATABASE_URL`/`DATABASE_URL_UNPOOLED` at your own PostgreSQL instance.
 
 ```bash
 npm run db:migrate     # apply migrations (creates the schema)
@@ -95,17 +97,17 @@ npm test            # unit tests — matching engine, parsers, validation, crypt
 npm run test:db     # integration tests against a real Postgres — import → reconcile → decisions → tenant isolation → Zoho sync (mocked HTTP)
 ```
 
-`npm run test:db` needs `DATABASE_URL`/`DIRECT_URL` pointed at a migrated database; it creates and cleans up its own throwaway organisations, so it's safe to run against your dev database.
+`npm run test:db` needs `DATABASE_URL`/`DATABASE_URL_UNPOOLED` pointed at a migrated database; it creates and cleans up its own throwaway organisations, so it's safe to run against your dev database.
 
 ## Deploying
 
 ### Vercel + Supabase/Neon (recommended)
 
 1. **Database**: create a Supabase or Neon Postgres project.
-   - Supabase: use the **pooled** connection string (port 6543, `?pgbouncer=true&connection_limit=1`) as `DATABASE_URL`, and the **direct** connection string (port 5432) as `DIRECT_URL` (Prisma needs a direct connection for migrations).
-   - Neon: use the pooled host (`...-pooler...`) as `DATABASE_URL` and the non-pooled host as `DIRECT_URL`, both with `?sslmode=require`.
+   - Supabase: use the **pooled** connection string (port 6543, `?pgbouncer=true&connection_limit=1`) as `DATABASE_URL`, and the **direct** connection string (port 5432) as `DATABASE_URL_UNPOOLED` (Prisma needs a direct connection for migrations).
+   - Neon: use the pooled host (`...-pooler...`) as `DATABASE_URL` and the non-pooled host as `DATABASE_URL_UNPOOLED`, both with `?sslmode=require`. If you add Neon through Vercel's own integration (Storage → Create Database → Neon), both variables are created for you with exactly these names — nothing to copy by hand.
 2. **Import the repo into Vercel** (New Project → import from GitHub). Framework preset: Next.js (auto-detected).
-3. **Environment variables**: add everything from `.env.example` that applies to you under Project → Settings → Environment Variables. At minimum: `DATABASE_URL`, `DIRECT_URL`, `NEXTAUTH_URL` (your production URL), `NEXTAUTH_SECRET`, `ENCRYPTION_KEY`. Add `CRON_SECRET` if you want the daily Zoho sync (`vercel.json` already defines the cron job), and the `ZOHO_*` / `GSP_*` variables if you're using those integrations.
+3. **Environment variables**: add everything from `.env.example` that applies to you under Project → Settings → Environment Variables. At minimum: `DATABASE_URL`, `DATABASE_URL_UNPOOLED`, `NEXTAUTH_URL` (your production URL), `NEXTAUTH_SECRET`, `ENCRYPTION_KEY`. Add `CRON_SECRET` if you want the daily Zoho sync (`vercel.json` already defines the cron job), and the `ZOHO_*` / `GSP_*` variables if you're using those integrations.
 4. **Deploy.** The build command (`vercel-build` in `package.json`) runs `prisma generate && prisma migrate deploy && next build`, so your migrations are applied automatically on every deploy — no separate migration step needed.
 5. Visit the deployed URL, go to `/register`, and create your organisation. Add `ALLOW_SIGNUP=false`-equivalent behaviour is already the default after the first account exists (see above) — add colleagues from **Settings** instead.
 
