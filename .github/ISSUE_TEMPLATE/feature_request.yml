@@ -1,0 +1,32 @@
+name: Feature request
+description: Suggest an improvement for accountants or for the integrations
+title: "feat: "
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem are you trying to solve?
+      description: Describe the accounting workflow, not just the button you want. Example – "we chase suppliers every month and need to see who is overdue".
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What would you like to see?
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives or workarounds you use today
+  - type: checkboxes
+    id: rules
+    attributes:
+      label: Project rules
+      description: Requests that break these will be declined.
+      options:
+        - label: This does not require scraping the GST portal, bypassing CAPTCHAs, or collecting GST portal passwords.
+          required: true
+        - label: This keeps imported source data immutable (decisions and corrections are stored separately).
+          required: true

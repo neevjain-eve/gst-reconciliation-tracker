@@ -1,0 +1,518 @@
+// GST Reconciliation Tracker – database schema
+//
+// Design rules
+//  * Multi-tenant: every business table carries `organizationId`; every query is scoped by it.
+//  * Imported data is immutable: Invoice / Gstr2bRecord rows are never edited. A re-import that
+//    changes content marks the old row `supersededAt` and inserts a new one.
+//  * Reconciliation decisions (accept / reject / notes / owner) live on ReconciliationResult and
+//    Comment, never on the imported rows.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  // Pooled connection (PgBouncer / Supabase pooler / Neon pooled) used by the app at runtime.
+  url       = env("DATABASE_URL")
+  // Direct connection used by `prisma migrate`. Set equal to DATABASE_URL for local Postgres.
+  directUrl = env("DIRECT_URL")
+}
+
+// ─────────────────────────────── Enums ───────────────────────────────
+
+enum Role {
+  OWNER
+  ADMIN
+  MEMBER
+}
+
+enum InvoiceSource {
+  ZOHO_BOOKS
+  MANUAL
+  FILE_UPLOAD
+}
+
+enum Gstr2bSource {
+  FILE_UPLOAD
+  GSP
+}
+
+enum DocType {
+  INVOICE
+  CREDIT_NOTE
+  DEBIT_NOTE
+}
+
+enum PeriodStatus {
+  OPEN
+  IN_REVIEW
+  CLOSED
+}
+
+enum ReconStatus {
+  MATCHED
+  MATCHED_WITH_VARIANCE
+  MISSING_IN_GSTR2B
+  MISSING_IN_BOOKS
+  DUPLICATE_INVOICE
+  GSTIN_MISMATCH
+  INVOICE_NUMBER_MISMATCH
+  TAX_MISMATCH
+  NEEDS_REVIEW
+}
+
+enum MatchMethod {
+  EXACT // raw supplier GSTIN + invoice number identical
+  NORMALIZED // identical after invoice-number normalisation
+  FUZZY // scored candidate pair
+  NONE // nothing to compare against
+}
+
+enum Decision {
+  PENDING
+  ACCEPTED
+  REJECTED
+  REVIEWED
+  FOLLOW_UP
+}
+
+enum ImportType {
+  BOOKS_FILE
+  GSTR2B_FILE
+  ZOHO_SYNC
+  GSP_FETCH
+}
+
+enum ImportStatus {
+  PENDING
+  RUNNING
+  COMPLETED
+  COMPLETED_WITH_ERRORS
+  FAILED
+}
+
+enum ZohoStatus {
+  PENDING_ORG_SELECTION
+  ACTIVE
+  ERROR
+}
+
+enum CommentKind {
+  NOTE
+  FOLLOW_UP
+}
+
+// ─────────────────────────── Tenancy & people ───────────────────────────
+
+model Organization {
+  id        String   @id @default(cuid())
+  name      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  users           User[]
+  clients         Client[]
+  gstins          GstinRegistration[]
+  taxPeriods      TaxPeriod[]
+  vendors         Vendor[]
+  invoices        Invoice[]
+  gstr2bRecords   Gstr2bRecord[]
+  runs            ReconciliationRun[]
+  results         ReconciliationResult[]
+  importJobs      ImportJob[]
+  zohoConnections ZohoConnection[]
+  comments        Comment[]
+  auditLogs       AuditLog[]
+}
+
+model User {
+  id             String   @id @default(cuid())
+  organizationId String
+  email          String   @unique
+  name           String
+  passwordHash   String
+  role           Role     @default(MEMBER)
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization    Organization           @relation(fields: [organizationId], references: [id])
+  assignedResults ReconciliationResult[] @relation("ResultAssignee")
+  decidedResults  ReconciliationResult[] @relation("ResultDecider")
+  comments        Comment[]
+  auditLogs       AuditLog[]
+  importJobs      ImportJob[]
+  runs            ReconciliationRun[]
+
+  @@index([organizationId])
+}
+
+// ─────────────────────────── Clients & registrations ───────────────────────────
+
+model Client {
+  id             String   @id @default(cuid())
+  organizationId String
+  name           String
+  pan            String?
+  notes          String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization        @relation(fields: [organizationId], references: [id])
+  gstins       GstinRegistration[]
+
+  @@unique([organizationId, name])
+  @@index([organizationId])
+}
+
+model GstinRegistration {
+  id             String   @id @default(cuid())
+  organizationId String
+  clientId       String
+  gstin          String
+  tradeName      String?
+  stateCode      String
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now())
+
+  organization   Organization           @relation(fields: [organizationId], references: [id])
+  client         Client                 @relation(fields: [clientId], references: [id])
+  taxPeriods     TaxPeriod[]
+  invoices       Invoice[]
+  gstr2bRecords  Gstr2bRecord[]
+  runs           ReconciliationRun[]
+  results        ReconciliationResult[]
+  importJobs     ImportJob[]
+  zohoConnection ZohoConnection?
+
+  @@unique([organizationId, gstin])
+  @@index([clientId])
+}
+
+model TaxPeriod {
+  id                  String       @id @default(cuid())
+  organizationId      String
+  gstinRegistrationId String
+  financialYear       String // e.g. "2025-26"
+  month               Int // 1-12 (calendar month)
+  year                Int // calendar year
+  status              PeriodStatus @default(OPEN)
+  createdAt           DateTime     @default(now())
+
+  organization  Organization           @relation(fields: [organizationId], references: [id])
+  gstin         GstinRegistration      @relation(fields: [gstinRegistrationId], references: [id])
+  invoices      Invoice[]
+  gstr2bRecords Gstr2bRecord[]
+  results       ReconciliationResult[]
+  importJobs    ImportJob[]
+
+  @@unique([gstinRegistrationId, year, month])
+  @@index([organizationId, financialYear])
+}
+
+model Vendor {
+  id             String   @id @default(cuid())
+  organizationId String
+  gstin          String
+  name           String
+  pan            String
+  createdAt      DateTime @default(now())
+
+  organization  Organization           @relation(fields: [organizationId], references: [id])
+  invoices      Invoice[]
+  gstr2bRecords Gstr2bRecord[]
+  results       ReconciliationResult[]
+
+  @@unique([organizationId, gstin])
+  @@index([organizationId, name])
+}
+
+// ─────────────────────────── Imported source data (immutable) ───────────────────────────
+
+/// A purchase bill from the books (Zoho Books, manual form, or uploaded file).
+model Invoice {
+  id                  String        @id @default(cuid())
+  organizationId      String
+  gstinRegistrationId String
+  taxPeriodId         String
+  vendorId            String
+  source              InvoiceSource
+  externalId          String? // Zoho bill_id
+  externalModifiedAt  String? // Zoho last_modified_time, used to skip unchanged bills on sync
+  importJobId         String?
+  createdById         String?
+
+  docType           DocType  @default(INVOICE)
+  supplierGstin     String
+  supplierName      String
+  invoiceNumber     String
+  invoiceNumberNorm String
+  invoiceDate       DateTime @db.Date
+  placeOfSupply     String?
+  reverseCharge     Boolean  @default(false)
+  itcEligible       Boolean  @default(true)
+
+  taxableValue Decimal @db.Decimal(15, 2)
+  igst         Decimal @default(0) @db.Decimal(15, 2)
+  cgst         Decimal @default(0) @db.Decimal(15, 2)
+  sgst         Decimal @default(0) @db.Decimal(15, 2)
+  cess         Decimal @default(0) @db.Decimal(15, 2)
+  invoiceValue Decimal @db.Decimal(15, 2)
+
+  contentHash    String
+  rawData        Json? // original payload exactly as received
+  notes          String?
+  supersededAt   DateTime?
+  supersededById String?
+  createdAt      DateTime  @default(now())
+
+  organization Organization           @relation(fields: [organizationId], references: [id])
+  gstin        GstinRegistration      @relation(fields: [gstinRegistrationId], references: [id])
+  taxPeriod    TaxPeriod              @relation(fields: [taxPeriodId], references: [id])
+  vendor       Vendor                 @relation(fields: [vendorId], references: [id])
+  importJob    ImportJob?             @relation(fields: [importJobId], references: [id])
+  results      ReconciliationResult[]
+
+  @@unique([gstinRegistrationId, source, externalId, contentHash])
+  @@index([organizationId, gstinRegistrationId, supersededAt])
+  @@index([gstinRegistrationId, supplierGstin, invoiceNumberNorm])
+  @@index([taxPeriodId])
+  @@index([vendorId])
+  @@index([importJobId])
+}
+
+/// One document line from GSTR-2B (uploaded file or GSP API).
+model Gstr2bRecord {
+  id                  String       @id @default(cuid())
+  organizationId      String
+  gstinRegistrationId String
+  taxPeriodId         String
+  vendorId            String
+  source              Gstr2bSource
+  importJobId         String?
+
+  docType           DocType  @default(INVOICE)
+  supplierGstin     String
+  supplierName      String
+  invoiceNumber     String
+  invoiceNumberNorm String
+  invoiceDate       DateTime @db.Date
+  placeOfSupply     String?
+  reverseCharge     Boolean  @default(false)
+  itcAvailable      Boolean  @default(true)
+  itcReason         String?
+  supplierFilingPeriod String? // GSTR-1/IFF/5 period reported by supplier, e.g. "042025"
+  supplierFilingDate   DateTime? @db.Date
+
+  taxableValue Decimal @db.Decimal(15, 2)
+  igst         Decimal @default(0) @db.Decimal(15, 2)
+  cgst         Decimal @default(0) @db.Decimal(15, 2)
+  sgst         Decimal @default(0) @db.Decimal(15, 2)
+  cess         Decimal @default(0) @db.Decimal(15, 2)
+  invoiceValue Decimal @db.Decimal(15, 2)
+
+  contentHash    String
+  rawData        Json?
+  supersededAt   DateTime?
+  supersededById String?
+  createdAt      DateTime  @default(now())
+
+  organization Organization           @relation(fields: [organizationId], references: [id])
+  gstin        GstinRegistration      @relation(fields: [gstinRegistrationId], references: [id])
+  taxPeriod    TaxPeriod              @relation(fields: [taxPeriodId], references: [id])
+  vendor       Vendor                 @relation(fields: [vendorId], references: [id])
+  importJob    ImportJob?             @relation(fields: [importJobId], references: [id])
+  results      ReconciliationResult[]
+
+  @@index([organizationId, gstinRegistrationId, supersededAt])
+  @@index([gstinRegistrationId, supplierGstin, invoiceNumberNorm])
+  @@index([taxPeriodId])
+  @@index([vendorId])
+  @@index([importJobId])
+}
+
+model ImportJob {
+  id                  String       @id @default(cuid())
+  organizationId      String
+  gstinRegistrationId String?
+  taxPeriodId         String?
+  type                ImportType
+  status              ImportStatus @default(PENDING)
+  fileName            String?
+  fileHash            String?
+  totalRows           Int          @default(0)
+  importedRows        Int          @default(0)
+  unchangedRows       Int          @default(0)
+  skippedRows         Int          @default(0)
+  errorRows           Int          @default(0)
+  errors              Json? // capped list of { row, field, severity, message }
+  meta                Json?
+  createdById         String?
+  startedAt           DateTime     @default(now())
+  completedAt         DateTime?
+
+  organization  Organization       @relation(fields: [organizationId], references: [id])
+  gstin         GstinRegistration? @relation(fields: [gstinRegistrationId], references: [id])
+  taxPeriod     TaxPeriod?         @relation(fields: [taxPeriodId], references: [id])
+  createdBy     User?              @relation(fields: [createdById], references: [id])
+  invoices      Invoice[]
+  gstr2bRecords Gstr2bRecord[]
+
+  @@index([organizationId, startedAt])
+}
+
+model ZohoConnection {
+  id                   String     @id @default(cuid())
+  organizationId       String
+  gstinRegistrationId  String     @unique
+  dc                   String     @default("in") // Zoho data centre: com | in | eu | com.au | jp | ca | sa
+  zohoOrganizationId   String?
+  zohoOrganizationName String?
+  // AES-256-GCM encrypted (see src/lib/crypto.ts). Never returned to the browser.
+  accessTokenEnc       String
+  refreshTokenEnc      String
+  accessTokenExpiresAt DateTime
+  scope                String
+  apiDomain            String
+  status               ZohoStatus @default(PENDING_ORG_SELECTION)
+  autoSync             Boolean    @default(true)
+  syncFromDate         DateTime?  @db.Date // only bills dated on/after this are synced
+  lastSyncedAt         DateTime?
+  lastSyncError        String?
+  // { [zohoBillId]: last_modified_time } of bills deliberately not imported (draft/void/no GSTIN) so they aren't re-fetched every sync
+  skipCache            Json?
+  connectedById        String?
+  createdAt            DateTime   @default(now())
+  updatedAt            DateTime   @updatedAt
+
+  organization Organization      @relation(fields: [organizationId], references: [id])
+  gstin        GstinRegistration @relation(fields: [gstinRegistrationId], references: [id])
+
+  @@index([organizationId])
+}
+
+// ─────────────────────────── Reconciliation output & decisions ───────────────────────────
+
+model ReconciliationRun {
+  id                  String   @id @default(cuid())
+  organizationId      String
+  gstinRegistrationId String
+  financialYear       String?
+  options             Json
+  stats               Json
+  createdById         String?
+  createdAt           DateTime @default(now())
+
+  organization Organization           @relation(fields: [organizationId], references: [id])
+  gstin        GstinRegistration      @relation(fields: [gstinRegistrationId], references: [id])
+  createdBy    User?                  @relation(fields: [createdById], references: [id])
+  results      ReconciliationResult[]
+
+  @@index([organizationId, gstinRegistrationId, createdAt])
+}
+
+/// Derived pairing of a books invoice with a GSTR-2B record (either side may be absent) plus the
+/// human decision on it. System fields are recomputed on every run; decision fields never are.
+model ReconciliationResult {
+  id                  String  @id @default(cuid())
+  organizationId      String
+  runId               String
+  gstinRegistrationId String
+  taxPeriodId         String?
+  vendorId            String?
+  invoiceId           String?
+  gstr2bRecordId      String?
+  /// Deterministic `<invoiceId|-><gstr2bId|->`; lets decisions survive re-runs.
+  pairKey             String
+
+  status      ReconStatus
+  matchMethod MatchMethod
+  confidence  Int
+  explanation String      @db.Text
+  differences Json?
+
+  // Denormalised display fields (so the tracker can sort/filter without joins)
+  docType       DocType  @default(INVOICE)
+  supplierGstin String
+  supplierName  String
+  invoiceNumber String
+  invoiceDate   DateTime? @db.Date
+
+  booksTaxable    Decimal? @db.Decimal(15, 2)
+  booksTax        Decimal? @db.Decimal(15, 2)
+  gstr2bTaxable   Decimal? @db.Decimal(15, 2)
+  gstr2bTax       Decimal? @db.Decimal(15, 2)
+  taxableVariance Decimal  @default(0) @db.Decimal(15, 2) // books - GSTR-2B
+  taxVariance     Decimal  @default(0) @db.Decimal(15, 2) // books - GSTR-2B
+  booksItc        Decimal  @default(0) @db.Decimal(15, 2) // signed, 0 if not ITC-eligible
+  gstr2bItc       Decimal  @default(0) @db.Decimal(15, 2)
+  matchedItc      Decimal  @default(0) @db.Decimal(15, 2) // min(booksItc, gstr2bItc) for pairs
+
+  // Human decision (never overwritten by a re-run)
+  decision        Decision  @default(PENDING)
+  decidedById     String?
+  decidedAt       DateTime?
+  assigneeId      String?
+  followUpDueDate DateTime? @db.Date
+
+  isStale   Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  organization Organization      @relation(fields: [organizationId], references: [id])
+  run          ReconciliationRun @relation(fields: [runId], references: [id])
+  gstin        GstinRegistration @relation(fields: [gstinRegistrationId], references: [id])
+  taxPeriod    TaxPeriod?        @relation(fields: [taxPeriodId], references: [id])
+  vendor       Vendor?           @relation(fields: [vendorId], references: [id])
+  invoice      Invoice?          @relation(fields: [invoiceId], references: [id])
+  gstr2bRecord Gstr2bRecord?     @relation(fields: [gstr2bRecordId], references: [id])
+  assignee     User?             @relation("ResultAssignee", fields: [assigneeId], references: [id])
+  decidedBy    User?             @relation("ResultDecider", fields: [decidedById], references: [id])
+  comments     Comment[]
+
+  @@unique([organizationId, pairKey])
+  @@index([organizationId, gstinRegistrationId, isStale, status])
+  @@index([taxPeriodId])
+  @@index([vendorId])
+  @@index([assigneeId])
+  @@index([decision])
+}
+
+model Comment {
+  id             String      @id @default(cuid())
+  organizationId String
+  resultId       String
+  authorId       String
+  kind           CommentKind @default(NOTE)
+  body           String      @db.Text
+  dueDate        DateTime?   @db.Date
+  resolvedAt     DateTime?
+  createdAt      DateTime    @default(now())
+
+  organization Organization         @relation(fields: [organizationId], references: [id])
+  result       ReconciliationResult @relation(fields: [resultId], references: [id])
+  author       User                 @relation(fields: [authorId], references: [id])
+
+  @@index([resultId, createdAt])
+}
+
+model AuditLog {
+  id             String   @id @default(cuid())
+  organizationId String
+  userId         String?
+  action         String // e.g. RESULT_DECISION, INVOICE_CREATED, ZOHO_CONNECTED
+  entityType     String // e.g. ReconciliationResult, Invoice, ZohoConnection
+  entityId       String?
+  summary        String
+  before         Json?
+  after          Json?
+  metadata       Json?
+  createdAt      DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+  user         User?        @relation(fields: [userId], references: [id])
+
+  @@index([organizationId, createdAt])
+  @@index([entityType, entityId])
+}

@@ -1,0 +1,75 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 210 25% 97.5%;
+    --foreground: 222 40% 12%;
+    --card: 0 0% 100%;
+    --card-foreground: 222 40% 12%;
+    --primary: 224 71% 38%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 214 32% 94%;
+    --secondary-foreground: 222 40% 16%;
+    --muted: 214 32% 95%;
+    --muted-foreground: 215 16% 38%;
+    --accent: 214 40% 93%;
+    --accent-foreground: 222 40% 16%;
+    --destructive: 0 70% 44%;
+    --destructive-foreground: 0 0% 100%;
+    --success: 142 72% 27%;
+    --warning: 30 92% 36%;
+    --border: 214 24% 88%;
+    --input: 214 20% 82%;
+    --ring: 224 71% 45%;
+    --radius: 0.6rem;
+
+    /* data-viz tokens (categorical slots 1-3 from the validated reference palette) */
+    --series-1: #2a78d6;
+    --series-2: #eb6834;
+    --series-3: #1baf7a;
+    --viz-grid: hsl(214 24% 90%);
+    --viz-axis: hsl(215 16% 46%);
+  }
+
+  * {
+    @apply border-border;
+  }
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-feature-settings: "cv11", "ss01";
+  }
+  .tnum {
+    font-variant-numeric: tabular-nums;
+  }
+  :focus-visible {
+    @apply outline-none ring-2 ring-ring ring-offset-2 ring-offset-background;
+  }
+}
+
+@layer components {
+  .page-title {
+    @apply text-2xl font-semibold tracking-tight;
+  }
+  .page-sub {
+    @apply text-sm text-muted-foreground;
+  }
+  .field-label {
+    @apply mb-1.5 block text-sm font-medium;
+  }
+  .field-hint {
+    @apply mt-1 text-xs text-muted-foreground;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}

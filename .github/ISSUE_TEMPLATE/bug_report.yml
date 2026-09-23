@@ -1,0 +1,63 @@
+name: Bug report
+description: Something is wrong with matching, an import, an export or the UI
+title: "fix: "
+labels: ["bug", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **Do not paste real GSTINs, invoice data, tokens or passwords.** Replace them with made-up values that keep the same shape (for example `29AAAAA0000A1Z5`). If you must share a file, remove or scramble the sensitive columns first.
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Reconciliation / matching
+        - Import (CSV / XLSX / JSON upload)
+        - Zoho Books sync
+        - GSP / GSTR-2B API
+        - Reports & exports
+        - Dashboard
+        - Authentication / organisations
+        - Deployment (Vercel / Docker / database)
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What did you expect, and what did you see instead?
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Upload …
+        2. Click Run reconciliation …
+        3. Open the tracker and filter by …
+    validations:
+      required: true
+  - type: textarea
+    id: sample
+    attributes:
+      label: Anonymised sample rows (optional but very helpful for matching bugs)
+      description: One books row and the GSTR-2B row it should have matched, with made-up GSTINs.
+      render: text
+  - type: input
+    id: version
+    attributes:
+      label: Version / commit
+      placeholder: "v0.1.0 or a commit SHA"
+  - type: dropdown
+    id: env
+    attributes:
+      label: Where are you running it?
+      options: [Vercel, Docker, "Local (npm run dev)", Other]
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs or screenshots
+      description: Remove tokens, cookies and personal data first.
