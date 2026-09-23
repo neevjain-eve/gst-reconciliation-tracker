@@ -16,7 +16,7 @@ datasource db {
   // Pooled connection (PgBouncer / Supabase pooler / Neon pooled) used by the app at runtime.
   url       = env("DATABASE_URL")
   // Direct connection used by `prisma migrate`. Set equal to DATABASE_URL for local Postgres.
-  directUrl = env("DIRECT_URL")
+  directUrl = env("DATABASE_URL_UNPOOLED")
 }
 
 // ─────────────────────────────── Enums ───────────────────────────────
