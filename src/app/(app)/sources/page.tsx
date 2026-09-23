@@ -60,7 +60,9 @@ export default async function SourcesOverview() {
         <a className="font-medium underline" href="/standalone.html" target="_blank" rel="noreferrer noopener">
           single-file offline version
         </a>{" "}
-        with the same reconciliation logic — no login, no shared database, data stays in that browser.
+        with the same reconciliation logic. It keeps data only in that one browser (no login, no
+        shared database) — use it for solo, on-the-go work, and use this app whenever your team
+        needs to see the same reconciliation.
       </p>
 
       <h2 className="mb-2 text-sm font-semibold">Import history</h2>
