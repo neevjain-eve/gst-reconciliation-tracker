@@ -7,6 +7,7 @@ import { cn } from "@/lib/utils";
 const TABS = [
   { href: "/sources", label: "Overview", exact: true },
   { href: "/sources/upload", label: "Upload files" },
+  { href: "/sources/portal-helper", label: "GST portal helper" },
   { href: "/sources/manual", label: "Manual entry" },
   { href: "/sources/zoho", label: "Zoho Books" },
   { href: "/sources/gsp", label: "GSTR-2B API" },

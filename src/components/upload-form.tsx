@@ -159,6 +159,16 @@ export function UploadForm({ gstins, fys, defaultFy }: { gstins: { id: string; l
       </form>
 
       <aside className="space-y-4">
+        <div className="rounded-lg border bg-card p-5 text-sm shadow-sm">
+          <h3 className="text-sm font-semibold">GSTR-2B from the portal</h3>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Upload the Excel or JSON exactly as the GST portal gives it – no reformatting needed. The{" "}
+            <Link className="font-medium underline" href="/sources/portal-helper">
+              GST portal helper
+            </Link>{" "}
+            gets you to the download in a couple of clicks after you log in.
+          </p>
+        </div>
         <div className="rounded-lg border bg-card p-5 shadow-sm">
           <h3 className="text-sm font-semibold">Sample templates</h3>
           <p className="mt-1 text-xs text-muted-foreground">Column names are flexible (Zoho and Tally exports work as they are), but the templates show the expected layout with valid examples.</p>
