@@ -39,6 +39,15 @@ export const registerSchema = z.object({
     .refine((p) => /[A-Za-z]/.test(p) && /\d/.test(p), "Include at least one letter and one number"),
 });
 
+export const forgotPasswordSchema = z.object({
+  email: z.string().trim().toLowerCase().email("Enter a valid email"),
+});
+
+export const resetPasswordSchema = z.object({
+  token: z.string().min(1, "Missing reset token"),
+  password: registerSchema.shape.password,
+});
+
 export const teamMemberSchema = z.object({
   name: z.string().trim().min(2).max(100),
   email: z.string().trim().toLowerCase().email(),

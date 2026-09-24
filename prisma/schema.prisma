@@ -144,8 +144,26 @@ model User {
   auditLogs       AuditLog[]
   importJobs      ImportJob[]
   runs            ReconciliationRun[]
+  resetTokens     PasswordResetToken[]
 
   @@index([organizationId])
+}
+
+// A short-lived, single-use token for the "forgot password" flow. Only the
+// SHA-256 hash of the token is stored -- the raw token is never persisted,
+// only ever handed to the user once (via the reset link) and checked by
+// re-hashing whatever comes back on /reset-password.
+model PasswordResetToken {
+  id        String    @id @default(cuid())
+  userId    String
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
 }
 
 // ─────────────────────────── Clients & registrations ───────────────────────────
